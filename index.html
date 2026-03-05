@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>2-APA · Agente de Retroalimentación Académica</title>
+  <meta name="description" content="Agente evaluador de evidencias — Diplomado IAG · Aprendizaje Automático con IA"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:#C8B99A;}
+    #root{min-height:100vh;}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script type="text/babel">
+    /* ═══════════════════════════════════════════════════════════════════
+       GUÍA DE DESPLIEGUE — lee antes de subir
+       ═══════════════════════════════════════════════════════════════════
+
+       OPCIÓN A · GitHub Pages (gratis, URL permanente)
+       ─────────────────────────────────────────────────
+       1. Crea un repositorio público en github.com  (ej: agente-apa)
+       2. Sube este archivo renombrado como  index.html
+       3. Settings → Pages → Deploy from branch → main → / (root)
+       4. URL: https://<tuusuario>.github.io/agente-apa/
+       5. En Moodle: Añadir actividad → URL → pega la URL → Abrir en ventana nueva ✓
+
+       OPCIÓN B · Netlify Drop (listo en 60 segundos)
+       ─────────────────────────────────────────────────
+       1. Ve a  https://app.netlify.com/drop
+       2. Arrastra este archivo (puedes renombrarlo index.html antes)
+       3. Netlify genera una URL  https://xxxx.netlify.app  de inmediato
+       4. En Moodle: igual que opción A
+
+       OPCIÓN C · Servidor propio / hosting de FATLA
+       ─────────────────────────────────────────────────
+       1. Sube este archivo a cualquier carpeta con HTTPS
+          (cPanel, FTP, Plesk, etc.) — no necesita PHP ni base de datos
+       2. Asegúrate de que el servidor NO bloquee peticiones fetch() salientes
+          (cualquier hosting compartido estándar lo permite)
+       3. URL resultante: https://tudominio.com/ruta/agente-apa.html
+       4. En Moodle: igual que opciones anteriores
+
+       INTEGRACIÓN EN MOODLE (los 3 paths)
+       ─────────────────────────────────────────────────
+       · Modo recomendado: Actividad → URL → "Abrir en ventana nueva"
+         El estudiante hace clic → se abre en pestaña completa → funciona todo.
+       · Modo alternativo: Editor HTML → <a href="URL" target="_blank">
+         Botón personalizado dentro de la página del curso.
+       · NO usar iframe embebido en Moodle: los sandbox de iframe
+         bloquean fetch() a dominios externos (API de Anthropic).
+
+       REQUISITOS DEL NAVEGADOR DEL ESTUDIANTE
+       ─────────────────────────────────────────────────
+       · Conexión a internet (llama a api.anthropic.com en tiempo real)
+       · Chrome 90+, Firefox 90+, Safari 15+, Edge 90+
+       · Sin extensiones que bloqueen fetch() a dominios externos
+
+    ═══════════════════════════════════════════════════════════════════ */
+
+    const { useState, useRef } = React;
+
+
+const C = {
+  azulNoche:"#0D1B2A", azulMedio:"#1B2E45", azulSuave:"#243B55",
+  dorado:"#C9A84C", doradoClaro:"#E2C27A", doradoPale:"#F5E9C8",
+  naranja:"#E07B39", naranjaClaro:"#F4A261", naranjaPale:"#FDE8D8",
+  crema:"#FAF6EE", cremaMedio:"#F0E8D6",
+  blanco:"#FFFFFF", negro:"#111111", grisTexto:"#4A4A4A", grisClaro:"#9A8F82",
+};
+
+const CURSO_CONFIG = {
+  codigo:"2-APA", nombreCorto:"Aprendizaje Automático con IA",
+  nombreLargo:"Aprendizaje Automático con Inteligencia Artificial",
+  semanas:[
+    { semana:1, titulo:"Generalidades del Aprendizaje Automático",
+      descripcion:"Publica en tu Blog o Repositorio una propuesta donde defines un problema real bajo el marco del Machine Learning, argumentas por qué requiere IA y no programación convencional, y concluyes sobre su impacto.",
+      criterios:[
+        {id:"c1",peso:25,texto:"Selecciona un problema real y lo define bajo el marco del ML, explicando cómo la solución 'aprende' mediante datos."},
+        {id:"c2",peso:25,texto:"Define con claridad la entrada y salida de datos de la propuesta planteada."},
+        {id:"c3",peso:20,texto:"Justifica por qué los algoritmos de ML superan a las soluciones tradicionales, destacando la flexibilidad ante nuevos patrones."},
+        {id:"c4",peso:20,texto:"Presenta una conclusión sobre el impacto social o técnico de implementar esta solución de ML."},
+        {id:"c5",peso:10,texto:"La redacción es clara, profesional y estructurada; publicada en Blog o Repositorio accesible."},
+      ]},
+    { semana:2, titulo:"Tipos de Machine Learning",
+      descripcion:"Publica en tu Blog o Repositorio una entrada que diferencia el aprendizaje Supervisado y No Supervisado, explica la Reducción de la Dimensionalidad con tus propias palabras, e incorpora recursos visuales con diseño legible (Mobile-First).",
+      criterios:[
+        {id:"c1",peso:25,texto:"Identifica y explica las diferencias entre aprendizaje Supervisado (etiquetado) y No Supervisado (patrones)."},
+        {id:"c2",peso:20,texto:"Destaca al menos una ventaja y una desventaja de cada tipo de aprendizaje."},
+        {id:"c3",peso:25,texto:"Explica con sus propias palabras la importancia de la Reducción de la Dimensionalidad para simplificar el aprendizaje sin perder información esencial."},
+        {id:"c4",peso:20,texto:"Incluye capturas de pantalla, gráficos o esquemas que apoyen visualmente la explicación."},
+        {id:"c5",peso:10,texto:"La publicación es legible, con diseño adaptable (Mobile-First) y disponible en Blog o Repositorio."},
+      ]},
+    { semana:3, titulo:"Ética en la Recopilación de Datos",
+      descripcion:"Publica un análisis técnico profundo sobre cómo una mala selección de datos genera sesgo e inequidad, y explica por qué los modelos de ML deben ser explicables y transparentes para el usuario final.",
+      criterios:[
+        {id:"c1",peso:25,texto:"Identifica y explica cómo una mala selección de datos genera falta de equidad en los resultados del aprendizaje automático."},
+        {id:"c2",peso:20,texto:"Reflexiona sobre la procedencia de la información y la importancia de eliminar prejuicios en la fase de entrenamiento."},
+        {id:"c3",peso:25,texto:"Explica por qué los modelos de ML deben ser explicables para el usuario final, argumentando contra el modelo de 'caja negra'."},
+        {id:"c4",peso:20,texto:"Argumenta cómo la capacidad del modelo de justificar sus decisiones genera confianza en el usuario."},
+        {id:"c5",peso:10,texto:"El análisis es técnico, profundo, bien redactado y publicado en Blog o Repositorio accesible."},
+      ]},
+  ]
+};
+
+const RUBRICA = [
+  { nivel:"Aprobado",    umbral:85, badge:"#C9A84C", badgeText:"#0D1B2A", emoji:"★",
+    bgCard:"#F5E9C8", borderCard:"#C9A84C",
+    descripcion:"Tu evidencia cumple con los requerimientos esenciales de la semana.",
+    expectativa:"Has demostrado dominio de los conceptos solicitados con claridad, profundidad y una publicación bien estructurada. Tu trabajo es una base sólida para las siguientes misiones del módulo." },
+  { nivel:"Consolidado", umbral:65, badge:"#F4A261", badgeText:"#fff", emoji:"◆",
+    bgCard:"#F0E8D6", borderCard:"#F4A261",
+    descripcion:"Tu evidencia muestra un avance significativo y comprensión del tema.",
+    expectativa:"Estás en la dirección correcta. Para alcanzar 'Aprobado' profundiza los puntos aún superficiales, refuerza la argumentación técnica y asegura que todos los componentes estén completos." },
+  { nivel:"En Proceso",  umbral:40, badge:"#E07B39", badgeText:"#fff", emoji:"◑",
+    bgCard:"#FDE8D8", borderCard:"#E07B39",
+    descripcion:"Tu evidencia muestra esfuerzo inicial, pero requiere mayor desarrollo.",
+    expectativa:"Retoma la hoja de ruta de la misión y completa las fases incompletas. Cada fase tiene un propósito técnico concreto: revisa los criterios y asegúrate de que tu publicación los aborda todos." },
+  { nivel:"Iniciado",    umbral:0,  badge:"#9A8F82", badgeText:"#fff", emoji:"○",
+    bgCard:"#FAF6EE", borderCard:"#9A8F82",
+    descripcion:"La evidencia presentada aún no cumple con los requerimientos mínimos.",
+    expectativa:"Relee la hoja de ruta de la misión. La entrega debe responder a las tres fases: marco conceptual, análisis técnico y publicación formal en tu blog o repositorio." },
+];
+
+function determinarNivel(p){ return RUBRICA.find(r=>p>=r.umbral)||RUBRICA[RUBRICA.length-1]; }
+
+async function evaluarConIA({semanaConfig,tipoEntrega,contenido}){
+  const criteriosTexto=semanaConfig.criterios.map((c,i)=>`C${i+1} [Peso ${c.peso}%]: ${c.texto}`).join("\n");
+  const prompt=`Eres un docente evaluador experto en Machine Learning con criterio académico estricto. Evalúa la siguiente evidencia.
+
+SEMANA ${semanaConfig.semana}: ${semanaConfig.titulo}
+TAREA REQUERIDA: ${semanaConfig.descripcion}
+
+CRITERIOS DE EVALUACIÓN:
+${criteriosTexto}
+
+EVIDENCIA ENTREGADA (${tipoEntrega}):
+${contenido}
+
+INSTRUCCIONES DE EVALUACIÓN — LEE CON ATENCIÓN:
+
+PASO 1 — Analiza la evidencia contra cada criterio individualmente.
+Para cada criterio Cn, determina qué porcentaje (0–100) del criterio está EFECTIVAMENTE CUBIERTO en la evidencia.
+Un criterio está cubierto al 100% solo si la evidencia lo aborda de forma completa, con argumentación, ejemplos o desarrollo concreto.
+Un criterio está cubierto parcialmente si solo se menciona superficialmente.
+Un criterio NO está cubierto si la evidencia no lo toca o lo ignora.
+
+PASO 2 — Calcula la cobertura ponderada total:
+puntaje_interno = suma de (cobertura_Cn × peso_Cn / 100) para todos los criterios.
+
+PASO 3 — Aplica esta REGLA ESTRICTA para Aprobado:
+- "Aprobado" SOLO se otorga si puntaje_interno ≥ 85 Y ADEMÁS cada criterio individual tiene cobertura ≥ 70%.
+  Si algún criterio tiene cobertura < 70%, el nivel máximo posible es "Consolidado", sin importar el puntaje total.
+- "Consolidado": puntaje_interno ≥ 65 (y no cumple regla de Aprobado)
+- "En Proceso": puntaje_interno ≥ 40
+- "Iniciado": puntaje_interno < 40
+
+PASO 4 — Escribe la retroalimentación en ESPAÑOL, en tono docente, SIN mencionar números ni porcentajes.
+- aspectos_cumplidos: qué criterios están bien desarrollados y por qué.
+- aspectos_por_mejorar: qué criterios están incompletos o ausentes, con indicaciones concretas.
+- recomendacion: un único paso accionable y específico para mejorar.
+
+Si la evidencia es una URL: usa la herramienta web_search para acceder y analizar el contenido real de esa URL antes de evaluar.
+
+Responde ÚNICAMENTE con este JSON (sin markdown, sin texto adicional):
+{"puntaje_interno":0,"aspectos_cumplidos":"","aspectos_por_mejorar":"","recomendacion":""}`;
+  const res=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,
+      tools:[{type:"web_search_20250305",name:"web_search"}],
+      messages:[{role:"user",content:prompt}]})});
+  const data=await res.json();
+  const texto=data.content.filter(b=>b.type==="text").map(b=>b.text).join("");
+  return JSON.parse(texto.replace(/```json|```/g,"").trim());
+}
+
+function cargarScript(src){
+  return new Promise((res,rej)=>{
+    if(document.querySelector(`script[src="${src}"]`)){res();return;}
+    const s=document.createElement("script");
+    s.src=src; s.onload=res; s.onerror=rej;
+    document.head.appendChild(s);
+  });
+}
+
+function DocumentoImprimible({resultado,nombre,fechaHora,onVolver}){
+  const {nivel}=resultado;
+  const [generando,setGenerando]=useState(false);
+  const [msgPDF,setMsgPDF]=useState("");
+  const [imgSrc,setImgSrc]=useState(null);
+
+  const capturarPNG=async()=>{
+    setGenerando(true);
+    setImgSrc(null);
+    setMsgPDF("Cargando librería…");
+    try{
+      await cargarScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+      setMsgPDF("Capturando comprobante…");
+      const hoja=document.getElementById("apa-hoja");
+      const canvas=await window.html2canvas(hoja,{
+        scale:3, useCORS:true, backgroundColor:"#ffffff",
+        logging:false, removeContainer:true,
+        windowWidth:hoja.scrollWidth, windowHeight:hoja.scrollHeight
+      });
+      setImgSrc(canvas.toDataURL("image/png"));
+      setMsgPDF("");
+    } catch(e){
+      setMsgPDF("⚠ Error al capturar. Intenta de nuevo.");
+      setTimeout(()=>setMsgPDF(""),4000);
+    }
+    setGenerando(false);
+  };
+
+  const Sec=({titulo,texto,color,lc})=>(
+    <div style={{marginBottom:9}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+        <div style={{width:3,height:13,background:color,borderRadius:2,flexShrink:0}}/>
+        <span style={{fontSize:"6.5pt",fontWeight:800,textTransform:"uppercase",
+          letterSpacing:"1px",color:lc}}>{titulo}</span>
+      </div>
+      <div style={{background:"#FAF6EE",border:"1px solid #F0E8D6",borderRadius:4,
+        padding:"7px 11px",fontSize:"8.5pt",lineHeight:1.6,color:"#333"}}>{texto}</div>
+    </div>
+  );
+
+  return (
+    <div id="apa-wrapper" style={{background:"#C8B99A",minHeight:"100vh",
+      fontFamily:"'Segoe UI',Arial,sans-serif"}}>
+
+      {/* TOOLBAR */}
+      <div id="apa-toolbar" style={{background:"#0D1B2A",padding:"11px 22px",
+        display:"flex",alignItems:"center",justifyContent:"space-between",
+        borderBottom:"3px solid #C9A84C",position:"sticky",top:0,zIndex:999}}>
+        <button onClick={onVolver} style={{background:"transparent",
+          border:"1px solid #C9A84C88",color:"#C9A84C",padding:"8px 18px",
+          borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"inherit"}}>
+          ← Volver
+        </button>
+        <div style={{textAlign:"center"}}>
+          <div style={{color:"#E2C27A",fontWeight:700,fontSize:14}}>
+            📄 Comprobante · Vista previa
+          </div>
+          {msgPDF&&(
+            <div style={{color: msgPDF.startsWith("✓")?"#C9A84C":"#F4A261",
+              fontSize:11,marginTop:2,fontWeight:700}}>{msgPDF}</div>
+          )}
+        </div>
+        <button onClick={capturarPNG} disabled={generando} style={{
+          background:generando?"#1B2E45":"#C9A84C",
+          color:generando?"#9A8F82":"#0D1B2A",
+          border:"none",padding:"10px 24px",borderRadius:6,cursor:generando?"not-allowed":"pointer",
+          fontWeight:900,fontSize:14,fontFamily:"inherit",
+          boxShadow:generando?"none":"0 3px 14px rgba(201,168,76,.5)",
+          minWidth:160,transition:"all .2s"}}>
+          {generando?"⏳ Capturando…":"🖼 Generar imagen"}
+        </button>
+      </div>
+
+      {/* MODAL IMAGEN GENERADA */}
+      {imgSrc&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(13,27,42,.95)",
+          zIndex:2000,display:"flex",flexDirection:"column",
+          alignItems:"center",justifyContent:"flex-start",
+          overflowY:"auto",padding:"24px 16px 48px"}}>
+          <div style={{background:"#0D1B2A",border:"2px solid #C9A84C",borderRadius:12,
+            padding:"18px 22px",maxWidth:660,width:"100%",marginBottom:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+              marginBottom:12}}>
+              <div>
+                <div style={{color:"#E2C27A",fontWeight:900,fontSize:15}}>
+                  ✅ Comprobante generado
+                </div>
+                <div style={{color:"#9A8F82",fontSize:12,marginTop:3}}>
+                  La imagen está lista — guárdala con las instrucciones de abajo
+                </div>
+              </div>
+              <button onClick={()=>setImgSrc(null)} style={{
+                background:"transparent",border:"1px solid #C9A84C66",
+                color:"#C9A84C",padding:"6px 16px",borderRadius:6,
+                cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"inherit"}}>
+                ✕ Cerrar
+              </button>
+            </div>
+            <div style={{background:"rgba(201,168,76,.10)",border:"1px solid #C9A84C44",
+              borderRadius:8,padding:"11px 15px",fontSize:12,color:"#E2C27A",lineHeight:2}}>
+              <div>🖥 <strong>PC / Mac:</strong> Clic derecho sobre la imagen de abajo → <em>"Guardar imagen como…"</em></div>
+              <div>📱 <strong>Móvil:</strong> Mantén presionada la imagen → <em>"Descargar imagen"</em></div>
+            </div>
+          </div>
+          <img src={imgSrc} alt="Comprobante de retroalimentación"
+            style={{maxWidth:660,width:"100%",borderRadius:8,
+              boxShadow:"0 8px 40px rgba(0,0,0,.7)",cursor:"context-menu",
+              display:"block"}}
+            title="Clic derecho → Guardar imagen como…"
+          />
+        </div>
+      )}
+
+      {/* HOJA */}
+      <div style={{padding:"24px 20px 48px",display:"flex",justifyContent:"center"}}>
+        <div id="apa-hoja" style={{background:"#fff",maxWidth:680,width:"100%",
+          boxShadow:"0 8px 40px rgba(0,0,0,.28)",
+          fontFamily:"'Segoe UI',Arial,sans-serif",overflow:"hidden"}}>
+
+          <div id="apa-ft" style={{height:5,
+            background:"linear-gradient(90deg,#C9A84C,#E07B39,#C9A84C)"}}/>
+
+          <div id="apa-cab" style={{background:"#C8B99A",padding:"10px 18px 7px"}}>
+            <div style={{display:"flex",alignItems:"stretch",marginBottom:5}}>
+              <div style={{background:"#0D1B2A",color:"#C9A84C",padding:"7px 15px",
+                borderRadius:"6px 0 0 6px",fontWeight:900,fontSize:16,letterSpacing:1,
+                display:"flex",alignItems:"center"}}>
+                {CURSO_CONFIG.codigo}
+              </div>
+              <div style={{border:"1px solid rgba(13,27,42,.22)",borderLeft:"none",
+                borderRadius:"0 6px 6px 0",padding:"4px 13px",flex:1,
+                background:"rgba(255,255,255,.18)"}}>
+                <div style={{fontWeight:900,fontSize:14,color:"#0D1B2A"}}>Diplomado IAG</div>
+                <div style={{fontSize:11,color:"#243B55",fontWeight:600,marginTop:1}}>
+                  {CURSO_CONFIG.nombreLargo}
+                </div>
+              </div>
+            </div>
+            <div style={{fontSize:9,fontWeight:700,textTransform:"uppercase",
+              letterSpacing:1,color:"#4A4A4A",textAlign:"right"}}>
+              Documento de Retroalimentación Académica
+            </div>
+          </div>
+          <div style={{height:3,background:"#C9A84C"}}/>
+
+          <div style={{padding:"16px 28px 14px"}}>
+            <div style={{textAlign:"center",paddingBottom:9,
+              borderBottom:"1.5px solid #C9A84C",marginBottom:12}}>
+              <div style={{fontSize:17,fontWeight:900,color:"#0D1B2A"}}>
+                Reporte de Retroalimentación
+              </div>
+              <div style={{fontSize:13,color:"#111",marginTop:3}}>
+                <strong>Participante:</strong> {nombre}
+              </div>
+              <div style={{fontSize:11,color:"#9A8F82",marginTop:2}}>
+                Semana {resultado.semana} &nbsp;·&nbsp; {resultado.titulo}
+              </div>
+            </div>
+
+            <Sec titulo="Aspectos Cumplidos"
+              texto={resultado.aspectos_cumplidos} color="#C9A84C" lc="#0D1B2A"/>
+            <Sec titulo="Oportunidades de Mejora"
+              texto={resultado.aspectos_por_mejorar} color="#E07B39" lc="#7A2E00"/>
+            <Sec titulo="Próximo Paso Recomendado"
+              texto={resultado.recomendacion} color="#E07B39" lc="#7A2E00"/>
+
+            <div style={{background:"#0D1B2A",borderRadius:7,padding:"11px 15px",
+              display:"flex",alignItems:"center",gap:13,marginTop:8,marginBottom:12}}>
+              <div style={{width:46,height:46,borderRadius:"50%",background:nivel.badge,
+                color:nivel.badgeText,display:"flex",alignItems:"center",
+                justifyContent:"center",fontSize:22,fontWeight:900,flexShrink:0}}>
+                {nivel.nivel.charAt(0)}
+              </div>
+              <div>
+                <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:"1.5px",
+                  color:"#9A8F82",fontWeight:700}}>Veredicto de la Rúbrica</div>
+                <div style={{fontSize:20,fontWeight:900,color:"#C9A84C",
+                  letterSpacing:1,lineHeight:1.1}}>{nivel.nivel.toUpperCase()}</div>
+                <div style={{fontSize:11,color:"#E2C27A",marginTop:2,lineHeight:1.4}}>
+                  {nivel.descripcion}
+                </div>
+              </div>
+            </div>
+
+            <div style={{borderTop:"1.5px solid #C9A84C",paddingTop:9,
+              display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
+              <div style={{fontSize:11,color:"#4A4A4A",lineHeight:1.7}}>
+                <div style={{borderBottom:"1px solid #9A8F82",width:140,height:22,marginBottom:3}}/>
+                <strong>{nombre}</strong><br/>
+                <span style={{color:"#9A8F82",fontSize:10}}>Firma del Participante</span>
+              </div>
+              <div style={{fontSize:10,color:"#9A8F82",textAlign:"right",lineHeight:1.8}}>
+                <strong style={{color:"#0D1B2A"}}>
+                  {CURSO_CONFIG.codigo} · {CURSO_CONFIG.nombreCorto}
+                </strong><br/>
+                Módulo: Aprendizaje Automático con IA<br/>
+                Generado: {fechaHora}<br/>
+                <span style={{color:"#C9A84C",fontWeight:700}}>
+                  Agente de Retroalimentación Académica
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div id="apa-pie" style={{background:"#C8B99A",borderTop:"3px solid #C9A84C",
+            padding:"8px 18px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{minWidth:80}}/>
+              <div style={{textAlign:"center",lineHeight:1.8,flex:1}}>
+                <div style={{fontSize:11,color:"#0D1B2A",fontWeight:700}}>
+                  Diplomado en Inteligencia Artificial Generativa
+                </div>
+                <div style={{fontSize:10,color:"#243B55",fontWeight:600}}>
+                  Modelo PACIE · Módulo 5 VIC
+                </div>
+                <div style={{fontSize:10,color:"#0D1B2A",fontWeight:900,letterSpacing:.5}}>
+                  PLANETA FATLA©
+                </div>
+              </div>
+              <div style={{textAlign:"right",minWidth:80}}>
+                <div style={{fontSize:12,color:"#0D1B2A",fontWeight:900}}>tecnotips©</div>
+                <div style={{fontSize:10,color:"#243B55",fontWeight:600}}>
+                  2026 Tecnología<br/>con propósito
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="apa-fb" style={{height:5,
+            background:"linear-gradient(90deg,#C9A84C,#E07B39,#C9A84C)"}}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AgenteEvidencias(){
+  const [semanaIdx,setSemanaIdx]         =useState(0);
+  const [tipoEntrega,setTipoEntrega]     =useState("url");
+  const [urlVal,setUrlVal]               =useState("");
+  const [textoVal,setTextoVal]           =useState("");
+  const [archivoNombre,setArchivoNombre] =useState("");
+  const [archivoTexto,setArchivoTexto]   =useState("");
+  const [resultado,setResultado]         =useState(null);
+  const [cargando,setCargando]           =useState(false);
+  const [error,setError]                 =useState("");
+  const [vista,setVista]                 =useState("entregar");
+  const [nombreParticipante,setNombreParticipante]=useState("");
+  const [vistaDoc,setVistaDoc]           =useState(false);
+  const [fechaDoc,setFechaDoc]           =useState("");
+  const fileRef=useRef();
+  const semana=CURSO_CONFIG.semanas[semanaIdx];
+
+  const handleArchivo=async(e)=>{
+    const file=e.target.files[0]; if(!file) return;
+    setArchivoNombre(file.name);
+    setArchivoTexto(""); setError("");
+
+    if(file.type==="text/plain"){
+      const reader=new FileReader();
+      reader.onload=ev=>setArchivoTexto((ev.target.result||"").slice(0,12000));
+      reader.readAsText(file); return;
+    }
+
+    if(file.type==="application/pdf"||file.name.toLowerCase().endsWith(".pdf")){
+      try{
+        await cargarScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc=
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        const buf=await file.arrayBuffer();
+        const pdfDoc=await window.pdfjsLib.getDocument({data:buf}).promise;
+        const partes=[];
+        const maxP=Math.min(pdfDoc.numPages,15);
+        for(let p=1;p<=maxP;p++){
+          const pag=await pdfDoc.getPage(p);
+          const ct=await pag.getTextContent();
+          partes.push(ct.items.map(function(i){return i.str;}).join(" "));
+        }
+        const limpio=partes.join(" ").replace(/\s+/g," ").trim().slice(0,12000);
+        setArchivoTexto(limpio.length>40 ? limpio : "[PDF sin texto extraible. Usa URL o pega el texto directamente.]");
+      }catch(err){
+        setArchivoTexto("[Error leyendo PDF. Usa URL o Texto directo.]");
+      }
+      return;
+    }
+
+    setArchivoTexto(`[${file.name} — formato no legible. Copia el texto en "Texto directo" o usa la URL de tu publicación.]`);
+  };
+
+  const handleEvaluar=async()=>{
+    setError("");
+    let contenido="";
+    if(tipoEntrega==="url"){
+      if(!urlVal.trim()){setError("Ingresa una URL válida.");return;}
+      contenido=`URL: ${urlVal}`;
+    } else if(tipoEntrega==="texto"){
+      if(textoVal.trim().length<80){setError("Mínimo 80 caracteres.");return;}
+      contenido=textoVal;
+    } else {
+      if(!archivoTexto){setError("Sube un archivo primero.");return;}
+      contenido=archivoTexto;
+    }
+    setCargando(true);
+    try{
+      const ia=await evaluarConIA({semanaConfig:semana,tipoEntrega,contenido});
+      const nivel=determinarNivel(ia.puntaje_interno);
+      setResultado({semana:semana.semana,titulo:semana.titulo,nivel,
+        aspectos_cumplidos:ia.aspectos_cumplidos,
+        aspectos_por_mejorar:ia.aspectos_por_mejorar,
+        recomendacion:ia.recomendacion});
+      setVista("resultado");
+    } catch{ setError("Error al evaluar. Verifica tu conexión e intenta de nuevo."); }
+    setCargando(false);
+  };
+
+  const resetForm=()=>{
+    setResultado(null);setUrlVal("");setTextoVal("");
+    setArchivoNombre("");setArchivoTexto("");setError("");
+    setVista("entregar");setVistaDoc(false);
+  };
+
+  const abrirDoc=()=>{
+    const fh=new Date().toLocaleString("es-CO",{
+      weekday:"long",year:"numeric",month:"long",
+      day:"numeric",hour:"2-digit",minute:"2-digit"});
+    setFechaDoc(fh);
+    setVistaDoc(true);
+  };
+
+  if(vistaDoc&&resultado){
+    return(
+      <DocumentoImprimible
+        resultado={resultado}
+        nombre={nombreParticipante.trim()||"Participante"}
+        fechaHora={fechaDoc}
+        onVolver={()=>setVistaDoc(false)}
+      />
+    );
+  }
+
+  const card={background:C.blanco,borderRadius:12,padding:"20px 22px",
+    marginBottom:14,boxShadow:"0 2px 8px rgba(13,27,42,.09)"};
+  const cardCrema={...card,background:C.crema,border:`1px solid ${C.cremaMedio}`,
+    boxShadow:"none"};
+  const lbl={display:"block",fontWeight:700,fontSize:10,color:C.grisClaro,
+    marginBottom:8,textTransform:"uppercase",letterSpacing:1.5};
+  const btn={border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,
+    transition:"all .18s",fontFamily:"inherit"};
+
+  return(
+    <div style={{fontFamily:"'Segoe UI',system-ui,sans-serif",minHeight:"100vh",
+      background:"#C8B99A"}}>
+
+      {/* CABECERA */}
+      <div style={{background:"#C8B99A",color:C.azulNoche}}>
+        <div style={{height:4,background:`linear-gradient(90deg,${C.dorado},${C.naranja},${C.dorado})`}}/>
+        <div style={{maxWidth:820,margin:"0 auto",padding:"20px 20px 0"}}>
+          <div style={{display:"flex",alignItems:"flex-start",marginBottom:20}}>
+            <div style={{background:C.azulNoche,color:C.dorado,padding:"8px 14px",
+              borderRadius:"8px 0 0 8px",fontWeight:900,fontSize:18,letterSpacing:1,
+              display:"flex",alignItems:"center",whiteSpace:"nowrap",flexShrink:0}}>
+              {CURSO_CONFIG.codigo}
+            </div>
+            <div style={{background:"rgba(13,27,42,.10)",padding:"8px 16px",
+              borderRadius:"0 8px 8px 0",flex:1,
+              border:"1px solid rgba(13,27,42,.18)",borderLeft:"none"}}>
+              <div style={{fontWeight:900,fontSize:16,color:C.azulNoche}}>Diplomado IAG</div>
+              <div style={{fontSize:11,color:C.azulSuave,marginTop:2,fontWeight:600}}>
+                {CURSO_CONFIG.nombreLargo}
+              </div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",paddingBottom:14}}>
+            <span style={{fontSize:10,color:C.azulSuave,alignSelf:"center",marginRight:4,
+              textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>Escala:</span>
+            {RUBRICA.map(r=>(
+              <div key={r.nivel} style={{display:"flex",alignItems:"center",gap:5,
+                background:"rgba(13,27,42,.08)",border:"1px solid rgba(13,27,42,.20)",
+                borderRadius:20,padding:"3px 10px",fontSize:11,
+                color:C.azulNoche,fontWeight:600}}>
+                <span style={{fontSize:10}}>{r.emoji}</span><span>{r.nivel}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{height:1,background:`linear-gradient(90deg,${C.dorado}88,transparent)`}}/>
+          <div style={{display:"flex",gap:0}}>
+            {[{id:"entregar",label:"Entregar Evidencia"},
+              {id:"resultado",label:"Retroalimentación"}].map(t=>(
+              <button key={t.id} onClick={()=>setVista(t.id)} style={{
+                ...btn,padding:"11px 22px",fontSize:13,borderRadius:"8px 8px 0 0",
+                background:vista===t.id?C.crema:"transparent",
+                color:vista===t.id?C.azulNoche:`${C.azulNoche}88`,
+                borderBottom:vista===t.id?`3px solid ${C.dorado}`:"3px solid transparent",
+                marginRight:4}}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* CONTENIDO */}
+      <div style={{maxWidth:820,margin:"0 auto",padding:"22px 16px 52px"}}>
+
+        {/* VISTA ENTREGAR */}
+        {vista==="entregar"&&(<>
+          <div style={card}>
+            <label style={lbl}>Selecciona la semana</label>
+            <div style={{display:"flex",gap:8}}>
+              {CURSO_CONFIG.semanas.map((s,i)=>{
+                const activo=semanaIdx===i;
+                return(
+                  <button key={i} onClick={()=>{setSemanaIdx(i);setResultado(null);setError("");}}
+                    style={{...btn,flex:1,padding:"13px 8px",fontSize:13,
+                      background:activo?C.azulNoche:C.crema,
+                      color:activo?C.blanco:C.grisTexto,
+                      border:activo?`2px solid ${C.dorado}`:`2px solid ${C.cremaMedio}`}}>
+                    <div style={{width:28,height:28,borderRadius:"50%",margin:"0 auto 6px",
+                      background:activo?C.dorado:C.cremaMedio,
+                      color:activo?C.azulNoche:C.grisClaro,
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      fontWeight:900,fontSize:13}}>{s.semana}</div>
+                    <div style={{fontWeight:700,fontSize:12,lineHeight:1.3}}>
+                      {s.titulo.split(" ").slice(0,2).join(" ")}<br/>
+                      {s.titulo.split(" ").slice(2).join(" ")}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{...cardCrema,borderLeft:`4px solid ${C.dorado}`}}>
+            <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
+              <div style={{width:38,height:38,borderRadius:10,flexShrink:0,
+                background:C.azulNoche,color:C.dorado,display:"flex",
+                alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:16}}>
+                S{semana.semana}
+              </div>
+              <div style={{flex:1}}>
+                <h2 style={{margin:"0 0 6px",fontSize:16,color:C.azulNoche,
+                  fontWeight:800}}>{semana.titulo}</h2>
+                <p style={{margin:"0 0 14px",fontSize:13,color:C.grisTexto,lineHeight:1.7}}>
+                  {semana.descripcion}
+                </p>
+                <div style={{height:1,background:C.cremaMedio,margin:"10px 0"}}/>
+                <div style={{fontSize:10,fontWeight:700,color:C.grisClaro,
+                  textTransform:"uppercase",letterSpacing:1.2,marginBottom:10}}>
+                  Lo que se evaluará
+                </div>
+                {semana.criterios.map((c,i)=>(
+                  <div key={c.id} style={{display:"flex",gap:10,alignItems:"flex-start",
+                    marginBottom:9,fontSize:13,color:C.grisTexto,lineHeight:1.6}}>
+                    <span style={{width:22,height:22,borderRadius:"50%",flexShrink:0,
+                      background:C.azulNoche,color:C.dorado,display:"flex",
+                      alignItems:"center",justifyContent:"center",
+                      fontSize:11,fontWeight:800,marginTop:1}}>{i+1}</span>
+                    <span>{c.texto}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={card}>
+            <label style={lbl}>Tipo de entrega</label>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",
+              gap:8,marginBottom:20}}>
+              {[{id:"url",icon:"🔗",label:"URL / Blog",sub:"Enlace a tu publicación"},
+                {id:"archivo",icon:"📄",label:"PDF / Word",sub:"Sube tu documento"},
+                {id:"texto",icon:"✏️",label:"Texto directo",sub:"Escribe o pega aquí"}
+              ].map(t=>{
+                const activo=tipoEntrega===t.id;
+                return(
+                  <button key={t.id} onClick={()=>setTipoEntrega(t.id)} style={{
+                    ...btn,padding:"12px 8px",textAlign:"center",
+                    background:activo?C.azulNoche:C.crema,
+                    border:activo?`2px solid ${C.dorado}`:`2px solid ${C.cremaMedio}`,
+                    color:activo?C.blanco:C.grisTexto}}>
+                    <div style={{fontSize:22,marginBottom:4}}>{t.icon}</div>
+                    <div style={{fontSize:13,fontWeight:700}}>{t.label}</div>
+                    <div style={{fontSize:11,opacity:.7,marginTop:2}}>{t.sub}</div>
+                  </button>
+                );
+              })}
+            </div>
+            {tipoEntrega==="url"&&(
+              <input value={urlVal} onChange={e=>setUrlVal(e.target.value)}
+                placeholder="https://mi-blog.com/evidencia-semana-1"
+                style={{width:"100%",padding:"11px 14px",boxSizing:"border-box",
+                  border:`2px solid ${C.cremaMedio}`,borderRadius:8,fontSize:14,
+                  outline:"none",fontFamily:"inherit",background:C.crema,color:C.negro}}
+                onFocus={e=>e.target.style.borderColor=C.dorado}
+                onBlur={e=>e.target.style.borderColor=C.cremaMedio}/>
+            )}
+            {tipoEntrega==="texto"&&(
+              <textarea value={textoVal} onChange={e=>setTextoVal(e.target.value)}
+                placeholder="Pega o escribe aquí el texto de tu evidencia (mínimo 80 caracteres)..."
+                rows={7}
+                style={{width:"100%",padding:"11px 14px",boxSizing:"border-box",
+                  border:`2px solid ${C.cremaMedio}`,borderRadius:8,fontSize:13,
+                  outline:"none",fontFamily:"inherit",background:C.crema,
+                  color:C.negro,resize:"vertical"}}
+                onFocus={e=>e.target.style.borderColor=C.dorado}
+                onBlur={e=>e.target.style.borderColor=C.cremaMedio}/>
+            )}
+            {tipoEntrega==="archivo"&&(
+              <div>
+                <input type="file" ref={fileRef} onChange={handleArchivo}
+                  accept=".pdf,.txt" style={{display:"none"}}/>
+                <button onClick={()=>fileRef.current.click()} style={{
+                  ...btn,padding:"11px 20px",background:C.azulNoche,color:C.dorado,
+                  border:`2px solid ${C.dorado}`,fontSize:13,
+                  marginBottom:archivoNombre?10:0}}>
+                  📎 Seleccionar PDF o TXT
+                </button>
+                {archivoNombre&&(
+                  <div style={{fontSize:12,marginTop:8}}>
+                    {archivoTexto&&!archivoTexto.startsWith("[")
+                      ? <span style={{color:"#2e7d32",fontWeight:700}}>✅ {archivoNombre} — texto extraído ({archivoTexto.length} caracteres)</span>
+                      : archivoTexto.startsWith("[")
+                        ? <span style={{color:C.naranja,fontWeight:600}}>⚠ {archivoTexto}</span>
+                        : <span style={{color:C.grisTexto}}>⏳ Leyendo {archivoNombre}…</span>
+                    }
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {error&&(
+            <div style={{background:"#FDE8D8",border:"2px solid #E07B39",borderRadius:8,
+              padding:"12px 16px",marginBottom:14,fontSize:13,color:"#7A2E00"}}>
+              ⚠ {error}
+            </div>
+          )}
+
+          <button onClick={handleEvaluar} disabled={cargando} style={{
+            ...btn,width:"100%",padding:"15px",fontSize:15,
+            background:cargando?C.azulMedio:`linear-gradient(135deg,${C.azulNoche},${C.azulMedio})`,
+            color:cargando?C.grisClaro:C.dorado,
+            border:`2px solid ${cargando?C.azulMedio:C.dorado}`,
+            boxShadow:cargando?"none":"0 4px 18px rgba(13,27,42,.25)",
+            cursor:cargando?"not-allowed":"pointer",letterSpacing:.5}}>
+            {cargando?"⏳ Analizando tu evidencia…":"Enviar y Recibir Retroalimentación"}
+          </button>
+        </>)}
+
+        {/* RESULTADO VACÍO */}
+        {vista==="resultado"&&!resultado&&(
+          <div style={{...card,textAlign:"center",padding:"60px 20px"}}>
+            <div style={{width:64,height:64,borderRadius:"50%",margin:"0 auto 16px",
+              background:C.doradoPale,border:`2px solid ${C.doradoClaro}`,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:28,color:C.dorado}}>◎</div>
+            <p style={{margin:"0 0 6px",fontSize:16,fontWeight:700,color:C.azulNoche}}>
+              Sin retroalimentación aún
+            </p>
+            <p style={{margin:"0 0 20px",fontSize:13,color:C.grisClaro}}>
+              Entrega una evidencia para recibir tu evaluación.
+            </p>
+            <button onClick={()=>setVista("entregar")} style={{
+              ...btn,padding:"10px 28px",background:C.azulNoche,color:C.dorado,
+              border:`2px solid ${C.dorado}`,fontSize:13}}>Ir a Entregar</button>
+          </div>
+        )}
+
+        {/* RESULTADO CON DATOS */}
+        {vista==="resultado"&&resultado&&(()=>{
+          const {nivel}=resultado;
+          const esAprobado=nivel.nivel==="Aprobado";
+          return(
+            <div>
+              {/* Badge nivel */}
+              <div style={{background:nivel.bgCard,border:`2px solid ${nivel.borderCard}`,
+                borderRadius:14,padding:"30px 24px",marginBottom:14,
+                textAlign:"center",boxShadow:"0 4px 20px rgba(13,27,42,.10)"}}>
+                <div style={{width:70,height:70,borderRadius:"50%",background:nivel.badge,
+                  color:nivel.badgeText,margin:"0 auto 14px",display:"flex",
+                  alignItems:"center",justifyContent:"center",fontSize:34,fontWeight:900,
+                  boxShadow:`0 4px 14px ${nivel.badge}55`}}>{nivel.emoji}</div>
+                <div style={{display:"inline-block",background:nivel.badge,
+                  color:nivel.badgeText,borderRadius:24,padding:"7px 26px",
+                  fontSize:18,fontWeight:900,letterSpacing:1,marginBottom:14,
+                  textTransform:"uppercase"}}>{nivel.nivel}</div>
+                <p style={{margin:"0 0 6px",fontSize:15,color:C.negro,fontWeight:600,
+                  lineHeight:1.5}}>{nivel.descripcion}</p>
+                <div style={{fontSize:12,color:C.grisClaro,marginTop:8}}>
+                  Semana {resultado.semana} · {resultado.titulo}
+                </div>
+              </div>
+
+              {/* Escala */}
+              <div style={{...card,padding:"16px 18px"}}>
+                <label style={lbl}>Tu posición en la rúbrica</label>
+                <div style={{display:"flex",gap:6}}>
+                  {RUBRICA.slice().reverse().map(r=>{
+                    const esActual=r.nivel===nivel.nivel;
+                    return(
+                      <div key={r.nivel} style={{flex:1,padding:"8px 4px",borderRadius:8,
+                        textAlign:"center",fontSize:11,fontWeight:700,
+                        background:esActual?r.badge:C.crema,
+                        color:esActual?r.badgeText:C.grisClaro,
+                        border:esActual?`2px solid ${r.badge}`:`2px solid ${C.cremaMedio}`}}>
+                        <div style={{fontSize:15,marginBottom:2}}>{r.emoji}</div>
+                        <div style={{fontSize:10}}>{r.nivel}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Cumplidos */}
+              <div style={{...card,borderLeft:`4px solid ${C.dorado}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                  <div style={{width:30,height:30,borderRadius:"50%",background:C.doradoPale,
+                    border:`2px solid ${C.dorado}`,display:"flex",alignItems:"center",
+                    justifyContent:"center",fontSize:14,color:C.dorado,
+                    fontWeight:900,flexShrink:0}}>★</div>
+                  <span style={{fontWeight:700,fontSize:14,color:C.azulNoche}}>
+                    Aspectos que cumpliste
+                  </span>
+                </div>
+                <p style={{margin:0,fontSize:14,color:C.grisTexto,lineHeight:1.78}}>
+                  {resultado.aspectos_cumplidos}
+                </p>
+              </div>
+
+              {/* Por mejorar */}
+              <div style={{...card,borderLeft:`4px solid ${C.naranja}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                  <div style={{width:30,height:30,borderRadius:"50%",background:C.naranjaPale,
+                    border:`2px solid ${C.naranja}`,display:"flex",alignItems:"center",
+                    justifyContent:"center",fontSize:14,color:C.naranja,
+                    fontWeight:900,flexShrink:0}}>◎</div>
+                  <span style={{fontWeight:700,fontSize:14,color:C.azulNoche}}>
+                    {esAprobado
+                      ?"Para mantener este nivel en próximas semanas"
+                      :"Aspectos a profundizar para avanzar"}
+                  </span>
+                </div>
+                <p style={{margin:0,fontSize:14,color:C.grisTexto,lineHeight:1.78}}>
+                  {resultado.aspectos_por_mejorar}
+                </p>
+              </div>
+
+              {/* Expectativa */}
+              <div style={{...cardCrema,borderLeft:`4px solid ${C.azulMedio}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                  <div style={{width:30,height:30,borderRadius:"50%",background:C.azulNoche,
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    fontSize:13,color:C.dorado,fontWeight:900,flexShrink:0}}>◆</div>
+                  <span style={{fontWeight:700,fontSize:14,color:C.azulNoche}}>
+                    ¿Qué se espera de ti en este nivel?
+                  </span>
+                </div>
+                <p style={{margin:0,fontSize:14,color:C.grisTexto,lineHeight:1.78}}>
+                  {nivel.expectativa}
+                </p>
+              </div>
+
+              {/* Próximo paso */}
+              <div style={{background:C.azulNoche,borderRadius:12,padding:"20px 22px",
+                marginBottom:14,boxShadow:"0 4px 16px rgba(13,27,42,.2)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                  <div style={{width:30,height:30,borderRadius:"50%",background:C.dorado,
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    fontSize:14,color:C.azulNoche,fontWeight:900,flexShrink:0}}>→</div>
+                  <span style={{fontWeight:700,fontSize:14,color:C.dorado}}>
+                    Próximo paso recomendado
+                  </span>
+                </div>
+                <p style={{margin:0,fontSize:14,color:C.doradoClaro,lineHeight:1.78}}>
+                  {resultado.recomendacion}
+                </p>
+              </div>
+
+              <button onClick={resetForm} style={{...btn,width:"100%",padding:"13px",
+                fontSize:14,background:C.crema,border:`2px solid ${C.azulNoche}`,
+                color:C.azulNoche,marginBottom:14}}>
+                ← Entregar otra evidencia
+              </button>
+
+              {/* BLOQUE CONDICIONAL */}
+              {esAprobado ? (
+                <div style={{background:C.doradoPale,border:`2px solid ${C.dorado}`,
+                  borderRadius:12,padding:"20px 22px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+                    <div style={{width:36,height:36,borderRadius:"50%",background:C.dorado,
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      fontSize:18,color:C.azulNoche,fontWeight:900,flexShrink:0}}>★</div>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:900,color:C.azulNoche,
+                        textTransform:"uppercase",letterSpacing:1}}>
+                        ¡Felicitaciones! Genera tu comprobante
+                      </div>
+                      <div style={{fontSize:11,color:C.grisTexto,marginTop:2}}>
+                        Alcanzaste <strong>Aprobado</strong>. Ingresa tu nombre y genera el PDF oficial.
+                      </div>
+                    </div>
+                  </div>
+
+                  <label style={{...lbl,color:C.azulSuave}}>
+                    Nombre completo del participante
+                  </label>
+                  <input value={nombreParticipante}
+                    onChange={e=>setNombreParticipante(e.target.value)}
+                    placeholder="Ej: María González Pérez"
+                    style={{width:"100%",padding:"10px 14px",boxSizing:"border-box",
+                      border:`2px solid ${C.doradoClaro}`,borderRadius:8,fontSize:14,
+                      outline:"none",fontFamily:"inherit",background:C.blanco,
+                      color:C.negro,marginBottom:14}}
+                    onFocus={e=>e.target.style.borderColor=C.dorado}
+                    onBlur={e=>e.target.style.borderColor=C.doradoClaro}/>
+
+                  <button onClick={abrirDoc} style={{
+                    ...btn,width:"100%",padding:"14px",fontSize:15,
+                    background:`linear-gradient(135deg,${C.azulNoche},${C.azulMedio})`,
+                    color:C.dorado,border:`2px solid ${C.dorado}`,
+                    boxShadow:"0 4px 14px rgba(13,27,42,.3)",letterSpacing:.5}}>
+                    📄 Ver Comprobante → Guardar imagen
+                  </button>
+
+                  <div style={{marginTop:12,padding:"11px 14px",
+                    background:"rgba(13,27,42,.06)",borderRadius:8,
+                    fontSize:12,color:C.grisTexto,lineHeight:2.1,textAlign:"center"}}>
+                    Presiona <strong>🖼 Generar imagen</strong> → se abre la imagen del comprobante →
+                    <strong> clic derecho → Guardar imagen</strong> (PC) o
+                    <strong> mantén presionado → Descargar</strong> (móvil).
+                  </div>
+                </div>
+              ) : (
+                <div style={{background:nivel.bgCard,border:`2px solid ${nivel.borderCard}`,
+                  borderRadius:12,padding:"20px 22px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+                    <div style={{width:42,height:42,borderRadius:"50%",background:nivel.badge,
+                      color:nivel.badgeText,display:"flex",alignItems:"center",
+                      justifyContent:"center",fontSize:20,fontWeight:900,flexShrink:0}}>
+                      {nivel.emoji}
+                    </div>
+                    <div>
+                      <div style={{fontSize:14,fontWeight:900,color:C.azulNoche}}>
+                        Aún no puedes generar el comprobante
+                      </div>
+                      <div style={{fontSize:12,color:C.grisTexto,marginTop:2}}>
+                        El comprobante se habilita{" "}
+                        <strong>únicamente</strong> al alcanzar{" "}
+                        <strong style={{color:"#C9A84C"}}>★ Aprobado</strong>.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{height:1,background:nivel.borderCard,
+                    marginBottom:14,opacity:.4}}/>
+
+                  <div style={{fontSize:13,fontWeight:800,color:C.azulNoche,
+                    textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>
+                    🔧 Realiza estos ajustes antes de volver a entregar:
+                  </div>
+
+                  <div style={{background:"rgba(255,255,255,.7)",
+                    border:`1px solid ${nivel.borderCard}`,borderRadius:8,
+                    padding:"12px 14px",marginBottom:12,
+                    fontSize:13,color:C.grisTexto,lineHeight:1.75}}>
+                    {resultado.aspectos_por_mejorar}
+                  </div>
+
+                  <div style={{background:C.azulNoche,borderRadius:8,
+                    padding:"12px 14px",marginBottom:16}}>
+                    <div style={{fontSize:11,fontWeight:700,color:C.dorado,
+                      textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>
+                      → Próximo paso recomendado
+                    </div>
+                    <div style={{fontSize:13,color:C.doradoClaro,lineHeight:1.75}}>
+                      {resultado.recomendacion}
+                    </div>
+                  </div>
+
+                  <button onClick={resetForm} style={{
+                    ...btn,width:"100%",padding:"14px",fontSize:14,
+                    background:`linear-gradient(135deg,${nivel.badge},${nivel.borderCard})`,
+                    color:"#fff",border:"none",
+                    boxShadow:`0 4px 14px ${nivel.badge}55`,letterSpacing:.3}}>
+                    ✏️ Realizar ajustes y volver a solicitar retroalimentación
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* PIE */}
+      <div style={{background:C.azulNoche,borderTop:`3px solid ${C.dorado}`,
+        padding:"18px 24px 14px",position:"relative"}}>
+        <div style={{textAlign:"center",lineHeight:1.9}}>
+          <div style={{fontSize:13,color:C.doradoClaro,fontWeight:700}}>
+            Diplomado en Inteligencia Artificial Generativa
+          </div>
+          <div style={{fontSize:12,color:C.grisClaro}}>Modelo PACIE · Módulo 5 VIC</div>
+          <div style={{fontSize:12,color:C.dorado,fontWeight:700,letterSpacing:1}}>
+            PLANETA FATLA©
+          </div>
+        </div>
+        <div style={{position:"absolute",bottom:12,right:20,textAlign:"right",lineHeight:1.4}}>
+          <div style={{fontSize:12,color:C.dorado,fontWeight:800}}>tecnotips©</div>
+          <div style={{fontSize:10,color:C.grisClaro}}>2026 Tecnología con propósito</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+    // ── Montar la aplicación ──────────────────────────────────────────
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<AgenteEvidencias />);
+  </script>
+</body>
+</html>
